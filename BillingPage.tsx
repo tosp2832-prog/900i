@@ -176,7 +176,8 @@ const BillingPage: React.FC = () => {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
   const [resubscribeLoading, setResubscribeLoading] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
-  
+  const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
+
   const { user, session } = useAuth();
   const navigate = useNavigate();
 
@@ -435,6 +436,49 @@ const BillingPage: React.FC = () => {
       setError(err.message || 'Failed to set default payment method');
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleDownloadInvoice = async (invoice: Invoice) => {
+    try {
+      setDownloadingInvoice(invoice.id);
+      setError('');
+
+      console.log('Downloading invoice:', invoice.id);
+
+      const downloadUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/download-receipt/${invoice.id}`;
+
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Download failed:', response.status, errorText);
+        throw new Error(`Failed to download invoice. Server status: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Receipt-${invoice.id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      console.log('Invoice downloaded successfully');
+    } catch (err: any) {
+      console.error('Download error:', err);
+      setError(err.message || 'Failed to download receipt. Please try again.');
+    } finally {
+      setDownloadingInvoice(null);
     }
   };
 
@@ -893,8 +937,17 @@ const getPlanDurationText = (planType: string) => {
                       {formatDate(invoice.period_start)} - {formatDate(invoice.period_end)}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
-                        <Download className="h-4 w-4" />
+                      <button
+                        onClick={() => handleDownloadInvoice(invoice)}
+                        disabled={downloadingInvoice === invoice.id}
+                        className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Download Receipt"
+                      >
+                        {downloadingInvoice === invoice.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
                       </button>
                     </td>
                   </tr>
