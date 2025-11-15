@@ -135,8 +135,11 @@ export class SubscriptionService {
       throw error;
     }
   }
-static async getUserSubscription(userId: string): Promise<Subscription | null> {
+
+  static async getUserSubscription(userId: string): Promise<Subscription | null> {
   try {
+    console.log('🔍 Fetching subscription for user:', userId);
+
     // Use direct query instead of RPC to avoid type mismatch issues
     const { data: fallbackData, error: fallbackError } = await supabase
       .from('subscriptions')
@@ -150,19 +153,29 @@ static async getUserSubscription(userId: string): Promise<Subscription | null> {
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .maybeSingle();
-    
+
     if (fallbackError) {
-      console.error('Error fetching subscription:', fallbackError);
+      console.error('❌ RLS or query error fetching subscription:', {
+        error: fallbackError.message,
+        code: fallbackError.code
+      });
       return null;
     }
 
-    // 🔎 Log subscription data before returning
     if (fallbackData) {
-      console.log("Fetched subscription:", fallbackData);
+      console.log('✅ Subscription found:', {
+        id: fallbackData.id,
+        user_id: fallbackData.user_id,
+        plan_type: fallbackData.plan_type,
+        status: fallbackData.status
+      });
+    } else {
+      console.log('⚠️ No subscription found for user:', userId);
     }
+
     return fallbackData;
   } catch (error: any) {
-    console.error('Error fetching user subscription:', error);
+    console.error('❌ Error fetching user subscription:', error.message);
     return null;
   }
 }

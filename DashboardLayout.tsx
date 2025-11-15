@@ -43,31 +43,43 @@ export default function DashboardLayout() {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('payment') === 'success') {
       console.log('🎉 Payment success detected, refreshing subscription...');
-      
+
       // Clean up URL immediately to prevent re-triggering
       window.history.replaceState({}, '', window.location.pathname);
-      
-      // Trigger immediate subscription refresh and set up polling
-      checkSubscription(true);
-      
-      // Set up polling to check for subscription updates
+
+      // Small delay to allow webhook to process
+      setTimeout(() => {
+        console.log('💾 Initial subscription refresh after payment');
+        checkSubscription(true);
+      }, 1000);
+
+      // Set up aggressive polling to catch subscription creation
       let pollCount = 0;
-      const maxPolls = 20; // Poll for up to 2 minutes
+      const maxPolls = 40; // Poll for up to 4 minutes
       const pollInterval = setInterval(() => {
         pollCount++;
         console.log(`🔄 Polling for subscription update (${pollCount}/${maxPolls})`);
         checkSubscription(true);
-        
+
+        // Check if subscription now exists - if so, stop polling earlier
+        if (subscriptionData?.subscription) {
+          console.log('✅ Subscription found! Stopping polling early');
+          clearInterval(pollInterval);
+          setShowUpgradeSuccess(true);
+          setTimeout(() => setShowUpgradeSuccess(false), 5000);
+          return;
+        }
+
         if (pollCount >= maxPolls) {
           clearInterval(pollInterval);
-          console.log('⏰ Stopped polling for subscription updates');
+          console.log('⏰ Stopped polling for subscription updates after max retries');
         }
-      }, 6000); // Poll every 6 seconds
+      }, 3000); // Poll every 3 seconds (more aggressive)
 
       // Also trigger the subscription update event
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('subscription-updated'));
-      }, 1000);
+      }, 2000);
 
       // Clean up polling when component unmounts
       return () => {
@@ -76,7 +88,7 @@ export default function DashboardLayout() {
         }
       };
     }
-  }, []);
+  }, [subscriptionData?.subscription]);
 
   const checkSubscription = async (forceRefresh: boolean = false) => {
     if (!user) return;
